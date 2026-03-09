@@ -14,6 +14,7 @@ func Encrypt[T any](
 	intervalSeconds int64,
 	opts *CipherOptions,
 ) (string, error) {
+
 	if opts == nil {
 		opts = &CipherOptions{}
 	}
@@ -21,19 +22,16 @@ func Encrypt[T any](
 	now := time.Now().Unix()
 
 	ttl := opts.TTLSeconds
-
 	if ttl == 0 {
 		ttl = intervalSeconds
 	}
 
 	signature := opts.Signature
-
 	if signature == "" {
 		signature = "default-signature"
 	}
 
 	nonce, err := generateNonce()
-
 	if err != nil {
 		return "", err
 	}
@@ -49,28 +47,30 @@ func Encrypt[T any](
 	timeSlot := now / intervalSeconds
 
 	key, err := deriveKey(secret, timeSlot)
-
 	if err != nil {
 		return "", err
 	}
 
 	block, err := aes.NewCipher(key)
-
 	if err != nil {
 		return "", err
 	}
 
 	gcm, err := cipher.NewGCM(block)
-
 	if err != nil {
 		return "", err
 	}
 
 	iv := make([]byte, gcm.NonceSize())
 
-	rand.Read(iv)
+	if _, err := rand.Read(iv); err != nil {
+		return "", err
+	}
 
-	jsonData, _ := json.Marshal(payload)
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
 
 	cipherText := gcm.Seal(nil, iv, jsonData, nil)
 
@@ -78,3 +78,4 @@ func Encrypt[T any](
 
 	return token, nil
 }
+
