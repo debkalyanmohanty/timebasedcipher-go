@@ -15,57 +15,89 @@ func Decrypt[T any](
 	intervalSeconds int64,
 	opts *CipherOptions,
 ) (T, error) {
+
 	var zero T
 
-	parts := strings.Split(token, ".")
+	if opts == nil {
+		opts = &CipherOptions{}
+	}
+
+	parts := strings.SplitN(token, ".", 3)
 
 	if len(parts) != 3 || parts[0] != "v1" {
 		return zero, errors.New("invalid token")
 	}
 
 	cipherBytes, err := B64Decode(parts[1])
-
 	if err != nil {
 		return zero, err
 	}
 
 	iv, err := B64Decode(parts[2])
-
 	if err != nil {
 		return zero, err
 	}
 
 	now := time.Now().Unix()
 
-	timeSlot := now / intervalSeconds
-
-	key, err := deriveKey(secret, timeSlot)
-
-	if err != nil {
-		return zero, err
+	tolerance := opts.ClockToleranceSeconds
+	if tolerance == 0 {
+		tolerance = 30
 	}
 
-	block, err := aes.NewCipher(key)
-
-	if err != nil {
-		return zero, err
+	slots := []int64{
+		now / intervalSeconds,
+		(now - tolerance) / intervalSeconds,
+		(now + tolerance) / intervalSeconds,
 	}
 
-	gcm, err := cipher.NewGCM(block)
+	var plain []byte
 
-	if err != nil {
-		return zero, err
+	for _, slot := range slots {
+
+		key, err := deriveKey(secret, slot)
+		if err != nil {
+			continue
+		}
+
+		block, err := aes.NewCipher(key)
+		if err != nil {
+			continue
+		}
+
+		gcm, err := cipher.NewGCM(block)
+		if err != nil {
+			continue
+		}
+
+		plain, err = gcm.Open(nil, iv, cipherBytes, nil)
+		if err == nil {
+			break
+		}
 	}
 
-	plain, err := gcm.Open(nil, iv, cipherBytes, nil)
-
-	if err != nil {
-		return zero, err
+	if plain == nil {
+		return zero, errors.New("unable to decrypt token")
 	}
 
 	var payload TokenPayload[T]
 
-	json.Unmarshal(plain, &payload)
+	if err := json.Unmarshal(plain, &payload); err != nil {
+		return zero, err
+	}
+
+	expectedSig := opts.Signature
+	if expectedSig == "" {
+		expectedSig = "default-signature"
+	}
+
+	if payload.Sig != expectedSig {
+		return zero, errors.New("invalid signature")
+	}
+
+	if payload.Exp+tolerance < now {
+		return zero, errors.New("token expired")
+	}
 
 	if err := checkReplay(payload.Nonce); err != nil {
 		return zero, err
