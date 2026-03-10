@@ -3,6 +3,7 @@ package cipher
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -28,12 +29,12 @@ func Decrypt[T any](
 		return zero, errors.New("invalid token")
 	}
 
-	cipherBytes, err := B64Decode(parts[1])
+	cipherBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return zero, err
 	}
 
-	iv, err := B64Decode(parts[2])
+	iv, err := base64.RawURLEncoding.DecodeString(parts[2])
 	if err != nil {
 		return zero, err
 	}
