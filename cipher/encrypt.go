@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"time"
 )
@@ -61,21 +62,17 @@ func Encrypt[T any](
 		return "", err
 	}
 
-	iv := make([]byte, gcm.NonceSize())
+	iv := make([]byte, 12)
+	rand.Read(iv)
 
-	if _, err := rand.Read(iv); err != nil {
-		return "", err
-	}
-
-	jsonData, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
+	jsonData, _ := json.Marshal(payload)
 
 	cipherText := gcm.Seal(nil, iv, jsonData, nil)
 
-	token := "v1." + B64Encode(cipherText) + "." + B64Encode(iv)
+	token := "v1." +
+		base64.RawURLEncoding.EncodeToString(cipherText) +
+		"." +
+		base64.RawURLEncoding.EncodeToString(iv)
 
 	return token, nil
 }
-
